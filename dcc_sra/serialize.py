@@ -67,7 +67,7 @@ def indent(elem, level=0):
             elem.tail = i
 
 def reg_text(t):
-    return " ".join(t.split())
+    return " ".join(t.decode('utf-8').split())
 
 def reg_sample(s):
     s.mixs['lat_lon'] = " ".join(geo.cardinal(s.mixs['lat_lon']))
