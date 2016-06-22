@@ -34,11 +34,11 @@ class SSHConnection(object):
         fields = map(string.split, ret.strip().split('\r\n')[2:-1])
         names = dict(  zip(map(last, fields), fields) )
         if tail not in names:
-            self.execute("mkdir "+self.remote_path)
+            self.execute("mkdir --mode=0775 "+self.remote_path)
             return
         if tail in names and not names[tail][0].startswith("d"):
             self.execute("rm "+self.remote_path)
-            self.execute("mkdir "+self.remote_path)
+            self.execute("mkdir --mode=0775 "+self.remote_path)
             return
 
 
