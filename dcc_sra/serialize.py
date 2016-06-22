@@ -142,8 +142,7 @@ def _add_biosample(root, st, sample, prep, release_date=None):
     bs_node = flatten_list(ret)[-3]
     hier_sub(bs_node, "SampleId", children=[spuid(sample)])
     hier_sub(bs_node, "Descriptor", children=[
-        eld("Title", text="%s %s sample"%(sample.mixs['env_package'],
-                                          sample.mixs['body_product'])),
+        eld("Title", text=sample.name),
     ])
     hier_sub(bs_node, "Organism",
              attrs={"taxonomy_id": prep.ncbi_taxon_id},
