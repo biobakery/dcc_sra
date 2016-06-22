@@ -76,6 +76,7 @@ class DCCSRAPipeline(anadama.pipelines.Pipeline):
             "dcc_user": None,
             "dcc_pw": None,
             "study_id": None,
+            "release_date": None,
         },
         "upload": {
             "keyfile": "/home/rschwager/test_data/broad_metadata/dcc_sra/iHMP_SRA_key",

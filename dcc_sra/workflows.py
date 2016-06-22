@@ -45,7 +45,7 @@ def _sequences(sample_records):
 
 def serialize(session, study, records_16s, files_16s, records_wgs, files_wgs,
               unsequenced_records, submission_fname, ready_fname, products_dir, 
-              dcc_user, dcc_pw, study_id=None):
+              dcc_user, dcc_pw, study_id=None, release_date=None):
     """
     Download raw sequence files and serialize metadata into xml for a
     cutlass.Study
@@ -97,7 +97,7 @@ def serialize(session, study, records_16s, files_16s, records_wgs, files_wgs,
 
     def _write_xml():
         samples = list(records_16s)+list(records_wgs)+list(unsequenced_records)
-        xml = to_xml(study, samples)
+        xml = to_xml(study, samples, release_date)
         indent(xml)
         et = ET.ElementTree(xml)
         et.write(submission_fname)

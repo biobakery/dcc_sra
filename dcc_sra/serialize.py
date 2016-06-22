@@ -2,6 +2,8 @@ from os.path import basename
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import SubElement as sub
 
+from datutil.parser import dateparse
+
 from . import geo
 
 
@@ -74,8 +76,8 @@ def reg_sample(s):
     return s
 
 
-def _add_description(root, st):
-    hier_sub(root, "Description", children=[
+def _add_description(root, st, release_date=None):
+    children = [ 
         eld("Comment", text="iHMP project "+st.name),
         eld("Organization", attrs={"role":"owner", "type":"institute"},
             children=[
@@ -88,7 +90,11 @@ def _add_description(root, st):
                 ])
             ]
         )
-    ])
+        ]
+    if release_date:
+        d = dateparse(release_date).strftime("%Y-%m-%d")
+        children.append( eld("Hold", attrs={"release_date": d}) )
+    hier_sub(root, "Description", children=children)
     return root
 
 
@@ -121,7 +127,7 @@ def _add_bioproject(root, st):
     return root
 
 
-def _add_biosample(root, st, sample, prep):
+def _add_biosample(root, st, sample, prep, release_date=None):
     sample = reg_sample(sample)
     ret = hier_sub(root, "Action", children=[
         eld("AddData", attrs={"target_db":"BioSample"}, children=[
@@ -187,15 +193,18 @@ def _add_sra(root, st, sample, prep, seq):
     return root
 
 
-def to_xml(st, samples):
+def to_xml(st, samples, release_date=None):
     root = ET.Element('Submission')
-    root = _add_description(root, st)
+    root = _add_description(root, st, release_date)
     root = _add_bioproject(root, st)
+    sample_cache = set()
     for sample in samples:
         if not sample.prepseqs:
             continue
         for prep, seq in sample.prepseqs:
-            root = _add_biosample(root, st, sample.sample, prep)
+            if sample.sample.id not in sample_cache:
+                root = _add_biosample(root, st, sample.sample, prep)
+                sample_cache.add(sample.sample.id)
             root = _add_sra(root, st, sample.sample, prep, seq)
 
     return root
