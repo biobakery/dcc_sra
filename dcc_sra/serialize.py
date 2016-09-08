@@ -2,7 +2,7 @@ from os.path import basename
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import SubElement as sub
 
-from datutil.parser import dateparse
+from dateutil.parser import parse as dateparse
 
 from . import geo
 
