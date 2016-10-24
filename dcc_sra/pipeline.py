@@ -11,18 +11,21 @@ from . import PrepSeq
 def get_prepseqs(preps):
     def _ps():
         for prep in preps:
-            for seq in prep.raw_seq_sets():
+            meth = getattr(prep, "child_seq_sets", None)
+            if not meth:
+                meth = getattr(prep, "raw_seq_sets", None)
+            for seq in meth():
                 yield prep, seq
     return map(PrepSeq._make, _ps())
 
 def filter_unsequenced(records_wgs, records_16s):
     recs_16s, recs_wgs, unsequenced = list(), list(), set()
-    for rec in records_wgs:
+    for rec in records_16s:
         if not rec.prepseqs:
             unsequenced.add(rec.sample)
         else:
             recs_16s.append(rec)
-    for rec in records_16s:
+    for rec in records_wgs:
         if not rec.prepseqs:
             unsequenced.add(rec.sample)
         else:
@@ -58,8 +61,9 @@ class DCCSRAPipeline(anadama.pipelines.Pipeline):
 
     Workflows used:
 
+    * :py:func:`dcc_sra.workflows.download_upload`
     * :py:func:`dcc_sra.workflows.serialize`
-    * :py:func:`dcc_sra.workflows.upload`
+    * :py:func:`dcc_sra.workflows.kickoff`
     * :py:func:`dcc_sra.workflows.report`
 
     """
@@ -77,6 +81,7 @@ class DCCSRAPipeline(anadama.pipelines.Pipeline):
             "dcc_pw": None,
             "study_id": None,
             "release_date": None,
+            "bioproject_id": None,
         },
         "upload": {
             "keyfile": "/home/rschwager/test_data/broad_metadata/dcc_sra/iHMP_SRA_key",
@@ -91,7 +96,8 @@ class DCCSRAPipeline(anadama.pipelines.Pipeline):
 
     workflows = {
         "serialize": workflows.serialize,
-        "upload": workflows.upload,
+        "kickoff": workflows.kickoff,
+        "download_upload": workflows.download_upload,
     }
 
     def __init__(self, cached_16s_files=list(),
@@ -170,26 +176,40 @@ class DCCSRAPipeline(anadama.pipelines.Pipeline):
                     records_16s.append(SubmitRecord(sample, prepseqs_16s))
                     prepseqs_wgs = get_prepseqs(sample.wgsDnaPreps())
                     records_wgs.append(SubmitRecord(sample, prepseqs_wgs))
-
+                    
         unsequenced, recs_16s, recs_wgs = filter_unsequenced(records_wgs,
                                                              records_16s)
+
         submission_file = os.path.join(self.products_dir, "submission.xml")
         ready_file = os.path.join(self.products_dir, "submit.ready")
-        yield workflows.serialize(session, study, records_16s,
-                                  self.cached_16s_files,
-                                  records_wgs,
-                                  self.cached_wgs_files,
+        six_fnames, wgs_fnames, tasks = workflows.download_upload(
+            recs_16s, self.cached_16s_files, 
+            recs_wgs, self.cached_wgs_files, 
+            dcc_user = self.options['serialize']['dcc_user'],
+            dcc_pw = self.options['serialize']['dcc_pw'],
+            ncbi_srv = self.options['upload']['remote_srv'],
+            ncbi_path = self.options['upload']['remote_path'],
+            ncbi_user = self.options['upload']['user'],
+            ncbi_keyfile = self.options['upload']['keyfile'],
+            products_dir = self.products_dir
+            )
+        for t in tasks:
+            yield t
+
+        yield workflows.serialize(session, study, recs_16s,
+                                  six_fnames,
+                                  recs_wgs,
+                                  wgs_fnames,
                                   unsequenced,
                                   submission_file,
                                   ready_file,
                                   self.products_dir,
                                   **self.options['serialize'])
 
-        yield workflows.upload(self.cached_16s_files,
-                               self.cached_wgs_files,
-                               submission_file, ready_file,
-                               products_dir=self.products_dir,
-                               **self.options['upload'])
+        yield workflows.kickoff(submission_file, ready_file,
+                                six_fnames+wgs_fnames,
+                                products_dir=self.products_dir,
+                                **self.options['upload'])
 
         yield workflows.report(session, ready_file+".complete",
                                **self.options['upload'])

@@ -2,7 +2,7 @@ from os.path import basename
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import SubElement as sub
 
-from datutil.parser import dateparse
+from dateutil.parser import parse as dateparse
 
 from . import geo
 
@@ -69,7 +69,7 @@ def indent(elem, level=0):
             elem.tail = i
 
 def reg_text(t):
-    return " ".join(t.decode('utf-8').split())
+    return u" ".join(t.split())
 
 def reg_sample(s):
     s.mixs['lat_lon'] = " ".join(geo.cardinal(s.mixs['lat_lon']))
@@ -98,7 +98,9 @@ def _add_description(root, st, release_date=None):
     return root
 
 
-def _add_bioproject(root, st):
+def _add_bioproject(root, st, bioproject_id=None):
+    if bioproject_id:
+        return root
     ret = hier_sub(root, "Action", children=[
         eld("AddData", attrs={"target_db":"BioProject"}, children=[
             eld("Data", attrs={"content_type":"xml"}, children=[
@@ -127,7 +129,8 @@ def _add_bioproject(root, st):
     return root
 
 
-def _add_biosample(root, st, sample, prep, release_date=None):
+def _add_biosample(root, st, sample, prep, release_date=None, 
+                   bioproject_id=None):
     sample = reg_sample(sample)
     ret = hier_sub(root, "Action", children=[
         eld("AddData", attrs={"target_db":"BioSample"}, children=[
@@ -144,12 +147,18 @@ def _add_biosample(root, st, sample, prep, release_date=None):
     hier_sub(bs_node, "Descriptor", children=[
         eld("Title", text=sample.name),
     ])
+    if bioproject_id:
+        hier_sub(bs_node, "BioProject", 
+                 children=[eld("PrimaryId", attrs={"name": "BioProject"}, 
+                               text=bioproject_id)])
+    else:
+        hier_sub(bs_node, "BioProject", children=[spuid(st)])
     hier_sub(bs_node, "Organism",
              attrs={"taxonomy_id": prep.ncbi_taxon_id},
              children=[eld("OrganismName", text="Metagenome")])
     hier_sub(bs_node, "Package", text="MIMS.me.human-associated.4.0")
     kv = lambda k, v: eld("Attribute", attrs={"attribute_name": k}, text=v)
-    get = lambda v: sample.mixs.get(v, "missing")
+    get = lambda v: sample.mixs.get(v, "missing").strip() or "missing"
     hier_sub(bs_node, "Attributes", children=[
         kv("env_biome", get("biome")),
         kv("collection_date", get("collection_date")),
@@ -165,14 +174,25 @@ def _add_biosample(root, st, sample, prep, release_date=None):
     return root
 
 
-def _add_sra(root, st, sample, prep, seq):
+def _add_sra(root, st, sample, prep, seq, files_sizes, 
+             bioproject_id=None):
     kv = lambda k, v: eld("Attribute", attrs={"name": k}, text=v)
     strategy = "AMPLICON" if prep_subtype(prep) == "16s" else "WGS"
     mims_or_mimarks = prep.mimarks if prep_subtype(prep) == "16s" else prep.mims
+    file_nodes = [ 
+        eld("File", attrs={"file_path":basename(name)},
+            children=[eld("DataType", text="sra-run-fastq")])
+        for name, _ in files_sizes
+        ]
+    if not file_nodes and seq.size == 0:
+        return root
+    if bioproject_id:
+        st_spuid = eld("PrimaryId", attrs={"db": "BioProject"}, 
+                       text=bioproject_id)
+    else:
+        st_spuid = spuid(st)
     hier_sub(root, "Action", children=[
-        eld("AddFiles", attrs={"target_db": "SRA"}, children=[
-            eld("File", attrs={"file_path":basename(seq.urls[0])},
-                children=[eld("DataType", text="generic-data")]),
+        eld("AddFiles", attrs={"target_db": "SRA"}, children=file_nodes+[
             kv("instrument_model",seq.seq_model),
             kv("library_strategy",strategy),
             kv("library_source", "GENOMIC"),
@@ -181,7 +201,7 @@ def _add_sra(root, st, sample, prep, seq):
             kv("library_construction_protocol",
                reg_text(mims_or_mimarks['lib_const_meth'])),
             eld("AttributeRefId", attrs={"name": "BioProject"}, children=[
-                eld("RefId", children=[spuid(st)])
+                eld("RefId", children=[st_spuid])
             ]),
             eld("AttributeRefId", attrs={"name": "BioSample"}, children=[
                 eld("RefId", children=[spuid(sample)])
@@ -192,19 +212,24 @@ def _add_sra(root, st, sample, prep, seq):
     return root
 
 
-def to_xml(st, samples, release_date=None):
+def to_xml(st, samples, tardict, release_date=None, bioproject_id=None):
     root = ET.Element('Submission')
     root = _add_description(root, st, release_date)
-    root = _add_bioproject(root, st)
+    root = _add_bioproject(root, st, bioproject_id)
     sample_cache = set()
     for sample in samples:
         if not sample.prepseqs:
             continue
         for prep, seq in sample.prepseqs:
             if sample.sample.id not in sample_cache:
-                root = _add_biosample(root, st, sample.sample, prep)
+                root = _add_biosample(root, st, sample.sample, prep, 
+                                      bioproject_id=bioproject_id)
                 sample_cache.add(sample.sample.id)
-            root = _add_sra(root, st, sample.sample, prep, seq)
+            is_16s = seq._get_raw_doc()['node_type'].startswith("16s")    
+            seqtype = "16s" if is_16s else "wgs"
+            tarkey = (basename(seq.urls[0]), seqtype)
+            root = _add_sra(root, st, sample.sample, prep, seq, tardict[tarkey],
+                            bioproject_id)
 
     return root
 

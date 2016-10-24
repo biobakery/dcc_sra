@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import pipes
 import socket
@@ -47,7 +48,8 @@ class SSHConnection(object):
         output = self.execute("ls -l "+self.remote_path).strip()
         for line in output.split('\r\n')[2:-1]:
             fields = line.split(None, 8)
-            name = os.path.join(self.remote_path, fields[-1])
+            name = re.sub(r'(.*)\s+->.*', r'\1', fields[-1])
+            name = os.path.join(self.remote_path, name)
             try:
                 size = int(fields[4])
             except ValueError:
