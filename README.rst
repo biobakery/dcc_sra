@@ -31,7 +31,7 @@ Then, install AnADAMA::
 
 Finally, install the dcc_sra module::
 
-  pip install 'git+https://bitbucket.org/biobakery/dcc_sra.git@master#egg=dcc_sra-0.0.1'
+  pip install 'git+https://github.com/biobakery/dcc_sra.git@master#egg=dcc_sra-0.0.1'
 
 
   
